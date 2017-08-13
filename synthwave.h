@@ -22,6 +22,8 @@ typedef int64_t  i64;
 typedef float    f32;
 typedef double   f64;
 
+#define $PI 3.14159265358979323846264338327950288f
+
 typedef union
 {
   struct { f32 x, y, z, w;         };
@@ -80,5 +82,21 @@ inline f32 Vector4_Length2(Vector* v)                          { return Vector4_
 f32 Vector2_Length(Vector* v);
 f32 Vector_Length(Vector* v);
 f32 Vector4_Length(Vector* v);
+
+inline void Matrix_Identity(Matrix* m)                         { m->m[0] = 1.0f; m->m[1] = 0.0f; m->m[2] = 0.0f; m->m[3] = 0.0f;
+                                                                 m->m[4] = 0.0f; m->m[5] = 1.0f; m->m[6] = 0.0f; m->m[7] = 0.0f;
+                                                                 m->m[8] = 0.0f; m->m[9] = 0.0f; m->m[10]= 1.0f; m->m[11]= 0.0f;
+                                                                 m->m[12]= 0.0f; m->m[13]= 0.0f; m->m[14]= 0.0f; m->m[15]= 1.0f;
+                                                               }
+
+void Matrix_Multiply(Matrix* out, Matrix* a, Matrix* b);
+
+void Matrix_Inverse(Matrix* out, Matrix* m);
+
+void Matrix_RotX(Matrix* m, f32 x);
+
+void Matrix_RotY(Matrix* m, f32 y);
+
+void Matrix_RotZ(Matrix* m, f32 z);
 
 #endif
