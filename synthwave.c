@@ -12,12 +12,42 @@
 #include <string.h>
 #include <malloc.h>
 #include <limits.h>
+#include <assert.h>
 
 #include <SDL.h>
 #include <SDL_main.h>
 
 #define $Assert(X, T) assert(X && T)
 #define $MaybeFunction(FN, ...)  do { if (FN) { FN(__VA_ARGS__); } } while(0)
+
+typedef struct
+{
+  Synthwave_Description desc;
+
+  struct
+  {
+    SDL_Window*   window;
+    SDL_Renderer* renderer;
+    u32           flags;
+  } Screen;
+
+  struct
+  {
+    u8     num, padding[3];
+    Colour colour[256];
+  } Palette;
+  
+  struct
+  {
+    f32 frameSec, fixedSec;
+    Timer frameTimer, fixedLimiter, fpsTimer;
+    u32 accumulator;
+  } Time;
+
+} Synthwave_Internal;
+
+Synthwave_Internal $$;
+Synthwave_Interface $;
 
 f32 $NormaliseDegrees(f32 deg)
 {
@@ -228,28 +258,41 @@ u32 Synthwave_Time_GetTicks()
   return SDL_GetTicks();
 }
 
-typedef struct
+void Synthwave_Palette_Add(Colour* colour)
 {
-  Synthwave_Description desc;
+  $Assert($$.Palette.num <= 255, "Maximum number of colours exceeded");
+  $$.Palette.colour[$$.Palette.num++] = *colour;
+}
 
-  struct
-  {
-    SDL_Window*   window;
-    SDL_Renderer* renderer;
-    u32           flags;
-  } Screen;
+void Synthwave_Palette_AddRgb(u8 r, u8 g, u8 b)
+{
+  Colour col = {.r = r, .g = g, .b = b};
+  Synthwave_Palette_Add(&col);
+}
+
+void Synthwave_Palette_AddU32(u32 colour)
+{
+  Colour col;
+  col.b = colour & 0xFF;
+  colour >>= 8;
+  col.g = colour & 0xFF;
+  colour >>= 8;
+  col.r = colour & 0xFF;
+  colour >>= 8;
   
-  struct
-  {
-    f32 frameSec, fixedSec;
-    Timer frameTimer, fixedLimiter, fpsTimer;
-    u32 accumulator;
-  } Time;
+  Synthwave_Palette_Add(&col);
+}
 
-} Synthwave_Internal;
+u8 Synthwave_Palette_GetCount()
+{
+  return $$.Palette.num;
+}
 
-Synthwave_Internal $$;
-Synthwave_Interface $;
+void Synthwave_Palette_Reset()
+{
+  $$.Palette.num = 0;
+  memset($$.Palette.colour, 0, sizeof($$.Palette.colour));
+}
 
 void Synthwave_Frame()
 {
@@ -281,10 +324,10 @@ void Synthwave_Frame()
     {
       $.Time.fixedMs = $$.desc.Time.fixedMs;
       $.Time.fixed   = $$.desc.Time.fixedMs / 1000.0f;
-
+      
       $$.desc.Events.OnFixedFrame();
       
-    $$.Time.accumulator += $.Time.fixedMs;
+      $$.Time.accumulator += $.Time.fixedMs;
     }
   }
 
@@ -314,6 +357,11 @@ int main(int argc, char** argv)
   
   $Setup(&$$.desc);
   
+  $.Palette.Add = Synthwave_Palette_Add;
+  $.Palette.AddRgb = Synthwave_Palette_AddRgb;
+  $.Palette.AddU32 = Synthwave_Palette_AddU32;
+  $.Palette.GetCount = Synthwave_Palette_GetCount;
+  $.Palette.Reset    = Synthwave_Palette_Reset;
   $.Time.GetTicks = Synthwave_Time_GetTicks;
   $$.desc.type = $Clamp($$.desc.type, ST_Windowed, ST_Windowed);
 
@@ -338,8 +386,6 @@ int main(int argc, char** argv)
     break;
   }
   
-
-
   if ($$.Screen.flags != 0)
   {
     SDL_Init($$.Screen.flags);
@@ -414,6 +460,9 @@ int main(int argc, char** argv)
   {
     SDL_Quit();
   }
+
+  memset(&$$, 0, sizeof($$));
+  memset(&$, 0, sizeof($));
 
   return 0;
 }

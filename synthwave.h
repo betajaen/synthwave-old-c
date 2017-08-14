@@ -76,6 +76,12 @@ typedef union
   Vector row[4];
 } Matrix;
 
+typedef union
+{
+  struct { u8 r, g, b; };
+  u8     m[4];
+} Colour;
+
 typedef struct
 {
   bool quit;
@@ -85,7 +91,16 @@ typedef struct
     i32 x, y;
     u32 width, height;
   } Screen;
-
+  
+  struct
+  {
+    void (*Reset);
+    void (*Add)(Colour* colour);
+    void (*AddRgb)(u8 r, u8 g, u8 b);
+    void (*AddU32)(u32 colour);
+    u8   (*GetCount)();
+  } Palette;
+  
   struct
   {
     u32 frameMs, fixedMs;
@@ -114,7 +129,7 @@ typedef struct
   {
     u32  fixedMs, frameMs;
   } Time;
-  
+
   struct
   {
     void (*OnStart)();
