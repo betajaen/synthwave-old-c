@@ -234,13 +234,16 @@ typedef struct
 
   struct
   {
-    SDL_Window* window;
+    SDL_Window*   window;
+    SDL_Renderer* renderer;
+    u32           flags;
   } Screen;
   
   struct
   {
     f32 frameSec, fixedSec;
-    Timer frameLimiter;
+    Timer frameTimer, fixedLimiter, fpsTimer;
+    u32 accumulator;
   } Time;
 
 } Synthwave_Internal;
@@ -250,6 +253,9 @@ Synthwave_Interface $;
 
 void Synthwave_Frame()
 {
+  $.Time.frameMs = Timer_GetTimeAndReset(&$$.Time.frameTimer);
+  $.Time.frame   = $.Time.frameMs / 1000.0f;
+
   SDL_Event event;
 
   while (SDL_PollEvent(&event))
@@ -263,6 +269,28 @@ void Synthwave_Frame()
     }
   }
 
+  u32 frameTime = $.Time.frameMs;
+  if (frameTime > 250)
+    frameTime = 250;
+  
+  if ($$.desc.Events.OnFixedFrame != NULL)
+  {
+    $$.Time.accumulator += frameTime;
+
+    while($$.Time.accumulator >= $$.desc.Time.fixedMs)
+    {
+      $.Time.fixedMs = $$.desc.Time.fixedMs;
+      $.Time.fixed   = $$.desc.Time.fixedMs / 1000.0f;
+
+      $$.desc.Events.OnFixedFrame();
+      
+    $$.Time.accumulator += $.Time.fixedMs;
+    }
+  }
+
+  $MaybeFunction($$.desc.Events.OnFrame, /**/);
+  
+  SDL_RenderPresent($$.Screen.renderer);
   $.Time.numFrames++;
 }
 
@@ -295,55 +323,71 @@ int main(int argc, char** argv)
   $$.Time.frameSec = $$.desc.Time.frameMs / 1000.0f;
 
 
-  i32 sdlInitFlags = 0;
+  $$.Screen.flags = 0;
 
   switch($$.desc.type)
   {
     case ST_Windowed:
-      sdlInitFlags = SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS | SDL_INIT_TIMER | SDL_INIT_NOPARACHUTE;
+      $$.Screen.flags = SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS | SDL_INIT_TIMER | SDL_INIT_NOPARACHUTE;
     break;
     case ST_Console:
-      sdlInitFlags = SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_NOPARACHUTE;
+      $$.Screen.flags = SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_NOPARACHUTE;
     break;
     case ST_RunOnce:
-      sdlInitFlags = 0;
+      $$.Screen.flags = 0;
     break;
   }
   
-  if (sdlInitFlags != 0)
+
+
+  if ($$.Screen.flags != 0)
   {
-    SDL_Init(sdlInitFlags);
+    SDL_Init($$.Screen.flags);
   }
   
-   if (sdlInitFlags != 0)
+   if ($$.Screen.flags != 0)
   {
 
-    if ((sdlInitFlags & SDL_INIT_VIDEO) == 0)
+    if (($$.Screen.flags & SDL_INIT_VIDEO) == 0)
     {
 #if $IsWindows == 1
       Synthwave_Win32_SetupConsoleHandler();
 #endif
     }
     
-    if ((sdlInitFlags & SDL_INIT_VIDEO) != 0)
+    if (($$.Screen.flags & SDL_INIT_VIDEO) != 0)
     {
       i32 x = $$.desc.Screen.x == INT_MAX ? SDL_WINDOWPOS_CENTERED : $$.desc.Screen.x,
           y = $$.desc.Screen.y == INT_MAX ? SDL_WINDOWPOS_CENTERED : $$.desc.Screen.y;
 
-      u32 w = $$.desc.Screen.w, 
-          h = $$.desc.Screen.h;
+      u32 w = $$.desc.Screen.w * $$.desc.Screen.scale, 
+          h = $$.desc.Screen.h * $$.desc.Screen.scale;
 
       const char* title = $$.desc.Screen.title == NULL ? "Synthwave" : $$.desc.Screen.title;
 
       $$.Screen.window = SDL_CreateWindow(title, x, y, w, h, SDL_WINDOW_SHOWN);
+      
+      SDL_GetWindowPosition($$.Screen.window, &$.Screen.x, &$.Screen.y);
+      SDL_GetWindowSize($$.Screen.window, (i32*) &$.Screen.width, (i32*) &$.Screen.height);
+      
+      $$.Screen.renderer = SDL_CreateRenderer(
+        $$.Screen.window, 
+        -1, 
+        SDL_RENDERER_ACCELERATED
+      );
+
     }
+    
+    Timer_Reset(&$$.Time.fixedLimiter);
+    Timer_Reset(&$$.Time.frameTimer);
+    Timer_Reset(&$$.Time.fpsTimer);
 
 #if $IsWindows == 1
     while($.quit == false)
     {
       Synthwave_Frame();
       
-      u32 frameMs = Timer_GetTime(&$$.Time.frameLimiter);
+      u32 frameMs = Timer_GetTime(&$$.Time.frameTimer);
 
       if (frameMs < $$.desc.Time.frameMs)
       {
@@ -357,13 +401,16 @@ int main(int argc, char** argv)
 
   $MaybeFunction($$.desc.Events.OnQuit, /**/);
   
-  if ((sdlInitFlags & SDL_INIT_VIDEO) != 0 && $$.Screen.window != NULL)
+  if (($$.Screen.flags & SDL_INIT_VIDEO) != 0 && $$.Screen.window != NULL && $$.Screen.renderer != NULL)
   {
+    SDL_DestroyRenderer($$.Screen.renderer);
+    $$.Screen.renderer;
+
     SDL_DestroyWindow($$.Screen.window);
     $$.Screen.window = NULL;
   }
 
-  if (sdlInitFlags != 0)
+  if ($$.Screen.flags != 0)
   {
     SDL_Quit();
   }

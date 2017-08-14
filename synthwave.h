@@ -89,7 +89,7 @@ typedef struct
   struct
   {
     u32 frameMs, fixedMs;
-    f32 delta, fixed;
+    f32 frame, fixed;
     u32 numFrames;
 
     u32 (*GetTicks)();
@@ -258,6 +258,19 @@ inline u32  Timer_GetTime(Timer* timer)
   else if (timer->state == 3)
     return timer->paused;
   return 0;
+}
+
+inline u32  Timer_GetTimeAndReset(Timer* timer)
+{
+  u32 time = 0;
+  if (timer->state == 1)
+    time = $.Time.GetTicks() - timer->start;
+  else if (timer->state == 3)
+    time = timer->paused;
+
+  Timer_Reset(timer);
+
+  return time;
 }
 
 inline bool Timer_IsRunning(Timer* timer)
