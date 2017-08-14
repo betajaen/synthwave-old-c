@@ -6,8 +6,18 @@
 //  of the MIT license.  See the LICENSE file for details.
 
 #include "synthwave.h"
+
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
+#include <malloc.h>
+#include <limits.h>
+
+#include <SDL.h>
+#include <SDL_main.h>
+
+#define $Assert(X, T) assert(X && T)
+#define $MaybeFunction(FN, ...)  do { if (FN) { FN(__VA_ARGS__); } } while(0)
 
 f32 $NormaliseDegrees(f32 deg)
 {
@@ -213,7 +223,172 @@ void Rotation_Normalize(Rotation* rotation)
   rotation->yaw   = $NormaliseDegrees(rotation->yaw);
 }
 
+u32 Synthwave_Time_GetTicks()
+{
+  return SDL_GetTicks();
+}
+
+typedef struct
+{
+  Synthwave_Description desc;
+
+  struct
+  {
+    SDL_Window* window;
+  } Screen;
+  
+  struct
+  {
+    f32 frameSec, fixedSec;
+    Timer frameLimiter;
+  } Time;
+
+} Synthwave_Internal;
+
+Synthwave_Internal $$;
+Synthwave_Interface $;
+
+void Synthwave_Frame()
+{
+  SDL_Event event;
+
+  while (SDL_PollEvent(&event))
+  {
+    switch(event.type)
+    {
+      case SDL_QUIT:
+      {
+        $.quit = true;
+      }
+    }
+  }
+
+  $.Time.numFrames++;
+}
+
+#if $IsWindows == 1
+static void Synthwave_Win32_SetupConsoleHandler();
+#endif
+
 int main(int argc, char** argv)
 {
+  memset(&$$, 0, sizeof($$));
+  memset(&$,  0, sizeof($));
+  
+  $$.desc.Screen.title = NULL;
+  $$.desc.Screen.x     = INT32_MAX;
+  $$.desc.Screen.y     = INT32_MAX;
+  $$.desc.Screen.w     = 320;
+  $$.desc.Screen.h     = 200;
+  $$.desc.Screen.scale = 2;
+  $$.desc.Time.frameMs = 20;
+  $$.desc.Time.fixedMs = 20;
+  
+  $Setup(&$$.desc);
+  
+  $.Time.GetTicks = Synthwave_Time_GetTicks;
+  $$.desc.type = $Clamp($$.desc.type, ST_Windowed, ST_Windowed);
 
+  $$.desc.Time.fixedMs = $Max(4, $$.desc.Time.fixedMs);
+  $$.desc.Time.frameMs = $Max(4, $$.desc.Time.frameMs);
+  $$.Time.fixedSec = $$.desc.Time.fixedMs / 1000.0f;
+  $$.Time.frameSec = $$.desc.Time.frameMs / 1000.0f;
+
+
+  i32 sdlInitFlags = 0;
+
+  switch($$.desc.type)
+  {
+    case ST_Windowed:
+      sdlInitFlags = SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS | SDL_INIT_TIMER | SDL_INIT_NOPARACHUTE;
+    break;
+    case ST_Console:
+      sdlInitFlags = SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_NOPARACHUTE;
+    break;
+    case ST_RunOnce:
+      sdlInitFlags = 0;
+    break;
+  }
+  
+  if (sdlInitFlags != 0)
+  {
+    SDL_Init(sdlInitFlags);
+  }
+  
+   if (sdlInitFlags != 0)
+  {
+
+    if ((sdlInitFlags & SDL_INIT_VIDEO) == 0)
+    {
+#if $IsWindows == 1
+      Synthwave_Win32_SetupConsoleHandler();
+#endif
+    }
+    
+    if ((sdlInitFlags & SDL_INIT_VIDEO) != 0)
+    {
+      i32 x = $$.desc.Screen.x == INT_MAX ? SDL_WINDOWPOS_CENTERED : $$.desc.Screen.x,
+          y = $$.desc.Screen.y == INT_MAX ? SDL_WINDOWPOS_CENTERED : $$.desc.Screen.y;
+
+      u32 w = $$.desc.Screen.w, 
+          h = $$.desc.Screen.h;
+
+      const char* title = $$.desc.Screen.title == NULL ? "Synthwave" : $$.desc.Screen.title;
+
+      $$.Screen.window = SDL_CreateWindow(title, x, y, w, h, SDL_WINDOW_SHOWN);
+    }
+
+#if $IsWindows == 1
+    while($.quit == false)
+    {
+      Synthwave_Frame();
+      
+      u32 frameMs = Timer_GetTime(&$$.Time.frameLimiter);
+
+      if (frameMs < $$.desc.Time.frameMs)
+      {
+        SDL_Delay($$.desc.Time.frameMs - frameMs);
+      }
+    }
+#else
+    emscripten_set_main_loop(Synthwave_Frame, 0, 1);
+#endif
+  }
+
+  $MaybeFunction($$.desc.Events.OnQuit, /**/);
+  
+  if ((sdlInitFlags & SDL_INIT_VIDEO) != 0 && $$.Screen.window != NULL)
+  {
+    SDL_DestroyWindow($$.Screen.window);
+    $$.Screen.window = NULL;
+  }
+
+  if (sdlInitFlags != 0)
+  {
+    SDL_Quit();
+  }
+
+  return 0;
 }
+
+
+#include <windows.h>
+
+#if $IsWindows == 1
+static BOOL WINAPI Synthwave_Win32_ConsoleHandler(DWORD signal) {
+
+    if (signal == CTRL_C_EVENT)
+    {
+      $.quit = true;
+    }
+    return TRUE;
+}
+
+static void Synthwave_Win32_SetupConsoleHandler()
+{
+  if (!SetConsoleCtrlHandler(Synthwave_Win32_ConsoleHandler, TRUE))
+  {
+    printf("\nERROR: Could not set control handler"); 
+  }
+}
+#endif
