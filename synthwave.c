@@ -9,6 +9,22 @@
 #include <math.h>
 #include <stdio.h>
 
+f32 $NormaliseDegrees(f32 deg)
+{
+  deg = fmodf(deg + 180.0f, 360.0f);
+  if (deg < 0.0f)
+      deg += 360;
+  return deg - 180;
+}
+
+f32 $NormaliseRadians(f32 rad)
+{
+  rad = fmodf(rad + $PI, $TWO_PI);
+  if (rad < 0.0f)
+      rad += $TWO_PI;
+  return rad - $PI;
+}
+
 f32 Vector2_Length(Vector* v)
 {
   return sqrtf(Vector2_Length2(v));
@@ -22,6 +38,22 @@ f32 Vector_Length(Vector* v)
 f32 Vector4_Length(Vector* v)
 {
   return sqrtf(Vector4_Length2(v));
+}
+
+void Vector_MultiplyMatrix(Vector* v, Matrix* m)
+{
+  v->x = v->x * m->row[0].x + v->y * m->row[1].x + v->z * m->row[2].x;
+  v->y = v->x * m->row[0].y + v->y * m->row[1].y + v->z * m->row[2].y;
+  v->z = v->x * m->row[0].z + v->y * m->row[1].z + v->z * m->row[2].z;
+  v->w = 1.0f;
+}
+
+void Vector4_MultiplyMatrix(Vector* v, Matrix* m)
+{
+  v->x = v->x * m->row[0].x + v->y * m->row[1].x + v->z * m->row[2].x + v->w * m->row[3].x;
+  v->y = v->x * m->row[0].y + v->y * m->row[1].y + v->z * m->row[2].y + v->w * m->row[3].y;
+  v->z = v->x * m->row[0].z + v->y * m->row[1].z + v->z * m->row[2].z + v->w * m->row[3].z;
+  v->w = v->x * m->row[0].w + v->y * m->row[1].w + v->z * m->row[2].w + v->w * m->row[3].w;
 }
 
 void Matrix_Multiply(Matrix* out, Matrix* a, Matrix* b)
@@ -101,34 +133,84 @@ void Matrix_Inverse(Matrix* out, Matrix* m)
   m->m[15] = (a20 * b03 - a21 * b01 + a22 * b00) * invDet;
 }
 
-void Matrix_RotX(Matrix* m, f32 x)
+void Matrix_Transpose(Matrix* out, Matrix* m)
 {
-  f32 c = cosf(x), s = sinf(x);
+  out->M[0][0] = m->M[0][0];
+  out->M[0][1] = m->M[1][0];
+  out->M[0][2] = m->M[2][0];
+  out->M[0][3] = m->M[3][0];
+  out->M[1][0] = m->M[0][1];
+  out->M[1][1] = m->M[1][1];
+  out->M[1][2] = m->M[2][1];
+  out->M[1][3] = m->M[3][1];
+  out->M[2][0] = m->M[0][2];
+  out->M[2][1] = m->M[1][2];
+  out->M[2][2] = m->M[2][2];
+  out->M[2][3] = m->M[3][2];
+  out->M[3][0] = m->M[0][3];
+  out->M[3][1] = m->M[1][3];
+  out->M[3][2] = m->M[2][3];
+  out->M[3][3] = m->M[3][3];
+}
+
+void Matrix_Rotate_Roll(Matrix* m, f32 roll)
+{
+  f32 cr = cosf(roll), sr = sinf(roll);
 
   m->M[0][0] = 1.0f;  m->M[0][1] = 0.0f;  m->M[0][2] = 0.0f;  m->M[0][3] = 0.0f;
-  m->M[1][0] = 0.0f;  m->M[1][1] = c;     m->M[1][2] = -s;    m->M[1][3] = 0.0f;
-  m->M[2][0] = 0.0f;  m->M[2][1] = s;     m->M[2][2] = c;     m->M[2][3] = 0.0f;
+  m->M[1][0] = 0.0f;  m->M[1][1] = cr;    m->M[1][2] = -sr;   m->M[1][3] = 0.0f;
+  m->M[2][0] = 0.0f;  m->M[2][1] = sr;    m->M[2][2] = cr;    m->M[2][3] = 0.0f;
   m->M[3][0] = 0.0f;  m->M[3][1] = 0.0f;  m->M[3][2] = 0.0f;  m->M[3][3] = 1.0f;
 }
 
-void Matrix_RotY(Matrix* m, f32 y)
+void Matrix_Rotate_Pitch(Matrix* m, f32 pitch)
 {
-  f32 c = cosf(y), s = sinf(y);
+  f32 cp = cosf(pitch), sp = sinf(pitch);
 
-  m->M[0][0] = c;     m->M[0][1] = 0.0f;  m->M[0][2] = s;     m->M[0][3] = 0.0f;
-  m->M[1][0] = 0.0f;  m->M[1][1] = 1.0f;  m->M[1][2] = 0.0f;  m->M[1][3] = 0.0f;
-  m->M[2][0] = -s;    m->M[2][1] = 0.0f;  m->M[2][2] = c;     m->M[2][3] = 0.0f;
-  m->M[3][0] = 0.0f;  m->M[3][1] = 0.0f;  m->M[3][2] = 0.0f;  m->M[3][3] = 1.0f;
+  m->M[0][0] = cp;    m->M[0][1] = 0.0f;   m->M[0][2] = sp;    m->M[0][3] = 0.0f;
+  m->M[1][0] = 0.0f;  m->M[1][1] = 1.0f;   m->M[1][2] = 0.0f;  m->M[1][3] = 0.0f;
+  m->M[2][0] = -sp;   m->M[2][1] = 0.0f;   m->M[2][2] = cp;    m->M[2][3] = 0.0f;
+  m->M[3][0] = 0.0f;  m->M[3][1] = 0.0f;   m->M[3][2] = 0.0f;  m->M[3][3] = 1.0f;
 }
 
-void Matrix_RotZ(Matrix* m, f32 z)
+void Matrix_Rotate_Yaw(Matrix* m, f32 yaw)
 {
-  f32 c = cosf(z), s = sinf(z);
+  f32 cy = cosf(yaw), sy = sinf(yaw);
 
-  m->M[0][0] = c;     m->M[0][1] = -s;    m->M[0][2] = 0.0f;  m->M[0][3] = 0.0f;
-  m->M[1][0] = s;     m->M[1][1] = c;     m->M[1][2] = 0.0f;  m->M[1][3] = 0.0f;
-  m->M[2][0] = 0.0f;  m->M[2][1] = 0.0f;  m->M[2][2] = 1.0f;  m->M[2][3] = 0.0f;
-  m->M[3][0] = 0.0f;  m->M[3][1] = 0.0f;  m->M[3][2] = 0.0f;  m->M[3][3] = 1.0f;
+  m->M[0][0] = cy;    m->M[0][1] = -sy;    m->M[0][2] = 0.0f;  m->M[0][3] = 0.0f;
+  m->M[1][0] = sy;    m->M[1][1] = cy;     m->M[1][2] = 0.0f;  m->M[1][3] = 0.0f;
+  m->M[2][0] = 0.0f;  m->M[2][1] = 0.0f;   m->M[2][2] = 1.0f;  m->M[2][3] = 0.0f;
+  m->M[3][0] = 0.0f;  m->M[3][1] = 0.0f;   m->M[3][2] = 0.0f;  m->M[3][3] = 1.0f;
+}
+
+void Matrix_LookAt(Matrix* m, Vector* position, Vector* target, Vector* up)
+{
+  Vector z;
+  Vector_Sub(&z, target, position);
+  Vector_Normalise(&z);
+
+  Vector x;
+  Vector_Cross(&x, up, &z);
+  Vector_Normalise(&x);
+
+  Vector y;
+  Vector_Cross(&y, &z, &x);
+  
+  m->M[0][0] = x.x;   m->M[0][1] = y.x;   m->M[0][2] = z.x;   m->M[0][3] = 0.0f;
+  m->M[1][0] = x.y;   m->M[1][1] = y.y;   m->M[1][2] = z.y;   m->M[1][3] = 0.0f;
+  m->M[2][0] = x.z;   m->M[2][1] = y.z;   m->M[2][2] = z.z;   m->M[2][3] = 0.0f;
+
+  m->M[3][0] = -Vector_Dot(&x, position);
+  m->M[3][1] = -Vector_Dot(&z, position);
+  m->M[3][2] = -Vector_Dot(&x, position);
+  m->M[3][3] = 1.0f;
+}
+
+void Rotation_Normalize(Rotation* rotation)
+{
+  rotation->roll  = $NormaliseDegrees(rotation->roll);
+  rotation->pitch = $NormaliseDegrees(rotation->pitch);
+  rotation->yaw   = $NormaliseDegrees(rotation->yaw);
 }
 
 int main(int argc, char** argv)
