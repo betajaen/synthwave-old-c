@@ -755,7 +755,7 @@ void Synthwave_Frame()
       
       $$.desc.Events.OnFixedFrame();
       
-      $$.Time.accumulator += $.Time.fixedMs;
+      $$.Time.accumulator -= $.Time.fixedMs;
     }
   }
 
