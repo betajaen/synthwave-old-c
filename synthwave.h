@@ -139,6 +139,18 @@ typedef struct
     void* (*Heap)(void* mem, u32 numBytes);
     void* (*Temp)(u32 numBytes);
   } Mem;
+  
+  struct
+  {
+    void (*Log)(const char* text);
+    void (*LogF)(const char* fmt, ...);
+  } Debug;
+
+  struct
+  {
+    char* (*Format)(const char* fmt, ...);
+    char* (*FormatHeap)(const char* fmt, ...);
+  } Text;
 
   struct
   {

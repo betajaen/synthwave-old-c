@@ -412,6 +412,73 @@ void* Synthwave_Mem_Heap(void* mem, u32 numBytes)
   return m;
 }
 
+void Synthwave_Debug_Log(const char* text)
+{
+  printf("%s\n", text);
+}
+
+void Synthwave_Debug_LogF(const char* fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  vprintf(fmt, args);
+  printf("\n");
+  va_end(args);
+}
+char* Synthwave_Text_Format(const char* fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  u32 len = vsnprintf(NULL, 0, fmt, args);
+
+  va_end(args);
+
+  char* text = $.Mem.Temp(len + 1);
+  va_start(args, fmt);
+
+#if $IsWindows == 1
+  #pragma warning( push )  
+  #pragma warning( disable : 4996 ) // This function or variable may be unsafe.
+#endif
+
+  vsprintf(text, fmt, args);
+
+#if $IsWindows == 1
+  #pragma warning( pop )
+#endif
+
+  va_end(args);
+
+  return text;
+}
+
+char* Synthwave_Text_FormatHeap(const char* fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  u32 len = vsnprintf(NULL, 0, fmt, args);
+  va_end(args);
+
+  char* text = $.Mem.Heap(NULL, len + 1);
+  va_start(args, fmt);
+
+#if $IsWindows == 1
+  #pragma warning( push )  
+  #pragma warning( disable : 4996 ) // This function or variable may be unsafe.
+#endif
+
+  vsprintf(text, fmt, args);
+
+#if $IsWindows == 1
+  #pragma warning( pop )
+#endif
+
+  va_end(args);
+
+  return text;
+}
+
+
 void Synthwave_Palette_Add(Colour* colour)
 {
   $Assert($$.Palette.num <= 255, "Maximum number of colours exceeded");
@@ -726,6 +793,10 @@ int main(int argc, char** argv)
   $.Time.GetTicks       = Synthwave_Time_GetTicks;
   $.Mem.Heap            = Synthwave_Mem_Heap;
   $.Mem.Temp            = Synthwave_Mem_Temp;
+  $.Debug.Log           = Synthwave_Debug_Log;
+  $.Debug.LogF          = Synthwave_Debug_LogF;
+  $.Text.Format         = Synthwave_Text_Format;
+  $.Text.FormatHeap     = Synthwave_Text_FormatHeap;
   $.Scene.New           = Synthwave_Scene_New;
   $.Scene.NewXywh       = Synthwave_Scene_NewXywh;
   $.Scene.Delete        = Synthwave_Scene_Delete;
