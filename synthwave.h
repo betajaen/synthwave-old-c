@@ -95,10 +95,29 @@ typedef struct
 
 typedef struct
 {
+  Vector centre, halfSize;
+} Box;
+
+typedef struct
+{
+  Vector centre;
+  f32    radius;
+} Sphere;
+
+typedef struct
+{
+  Vector min, max;
+} Bounds;
+
+typedef struct
+{
   Triangle* triangles;
   u16       numTriangles;
   u8        triangleShader;
   u8        fragmentShader;
+  Box       boundingBox;
+  Sphere    boundingSphere;
+  Bounds    aabb;
 } Mesh;
 
 #define $OPAQUE struct { u64 opaque; }
@@ -118,7 +137,7 @@ typedef struct
   
   struct
   {
-    void (*Reset);
+    void (*Reset)();
     void (*Add)(Colour* colour);
     void (*AddRgb)(u8 r, u8 g, u8 b);
     void (*AddU32)(u32 colour);
@@ -130,6 +149,7 @@ typedef struct
     u32 frameMs, fixedMs;
     f32 frame, fixed;
     u32 numFrames;
+    u32 fps;
 
     u32 (*GetTicks)();
   } Time;
@@ -154,7 +174,7 @@ typedef struct
 
   struct
   {
-    void (*New)(Surface* surface);
+    Surface (*New)();
     void (*Delete)(Surface* surface);
     void (*Render)(Surface* surface);
   } Surface;
@@ -256,8 +276,8 @@ inline void Vector2_Normalise(Vector* v)                       { Vector2_Mul_s(v
 inline void Vector_Normalise(Vector* v)                        { Vector_Mul_s(v, v, (1.0f / Vector_Length(v))); }
 inline void Vector4_Normalise(Vector* v)                       { Vector4_Mul_s(v, v, (1.0f / Vector_Length(v))); }
 
-void Vector_MultiplyMatrix(Vector* v, Matrix* m);
-void Vector4_MultiplyMatrix(Vector* v, Matrix* m);
+void Vector_MultiplyMatrix(Vector* out, Matrix* m, Vector* v);
+void Vector4_MultiplyMatrix(Vector* out, Matrix* m, Vector* v);
 
 void Vector_Rotate(Vector* out, Vector* v, Rotation* r);
 void Vector_Rotate_Pitch(Vector* out, Vector* v, f32 roll);
@@ -282,6 +302,11 @@ void Matrix_Rotate_Pitch(Matrix* out, f32 y);
 
 void Matrix_Rotate_Yaw(Matrix* out, f32 z);
 
+inline void Matrix_Set_Translation(Matrix* m, f32 x, f32 y, f32 z)
+{
+  m->m[12]= x; m->m[13]= y; m->m[14] = z;
+}
+
 void Matrix_LookAt(Matrix* m, Vector* position, Vector* target, Vector* up);
 
 void Rotation_Normalize(Rotation* rotation);
@@ -300,7 +325,7 @@ inline void Rotation_Div(Rotation* r, Rotation* a, Rotation* b)             { Ro
 inline void Rotation_Div_rpw(Rotation* o, Rotation* a, f32 r, f32 p, f32 y) { Rotation_Set(o, a->roll / r, a->pitch / p, a->yaw / y); }
 inline void Rotation_Div_s(Rotation* o, Rotation* a, f32 s)                 { Rotation_Set(o, a->roll / s, a->pitch / s, a->yaw / s); }
 
-inline void Timer_Reset(Timer* timer)
+inline void Timer_Start(Timer* timer)
 {
   timer->start  = $.Time.GetTicks();
   timer->paused = 0;
@@ -344,7 +369,7 @@ inline u32  Timer_GetTimeAndReset(Timer* timer)
   else if (timer->state == 3)
     time = timer->paused;
 
-  Timer_Reset(timer);
+  Timer_Start(timer);
 
   return time;
 }
@@ -383,7 +408,7 @@ typedef struct { u32 size, capacity; } ArrayHeader;
       void** AP = (void**)&(A);\
       ArrayHeader* AH = $.Mem.Heap(Array_Header(A), sizeof(*(A)) * NEW_CAPACITY);\
       AH->capacity = NEW_CAPACITY;\
-      AH->size = Min(AH->size, AH->capacity);\
+      AH->size = $Min(AH->size, AH->capacity);\
       (*AP) = (void*)(AH + 1);\
     } while(0)
 
@@ -440,5 +465,7 @@ typedef struct { u32 size, capacity; } ArrayHeader;
         Array_Size(A) = length - 1;\
       }\
     } while(0)
+
+void Mesh_Recalculate(Mesh* mesh, bool bounds, bool normals);
 
 #endif

@@ -22,7 +22,7 @@
 
 typedef enum
 {
-  ST_DrawMesh = 0,
+  Synthwave_Scene_DrawCommand_DrawMesh = 0,
 } Synthwave_Scene_DrawCommand_Type;
 
 typedef struct
@@ -61,7 +61,7 @@ typedef struct
   Synthwave_FrameBuffer        fb;
   Synthwave_Scene_DrawCommand* drawCmds;
   Matrix                       invView, projection, screen, viewProjectionScreen;
-  Vector                       cameraPosition, cameraTarget, lightPosition;
+  Vector                       cameraPosition, cameraTarget, lightDirection;
   bool                         vpsOutOfDate;
 } Synthwave_Scene;
 
@@ -97,6 +97,9 @@ typedef struct
     f32 frameSec, fixedSec;
     Timer frameTimer, fixedLimiter, fpsTimer;
     u32 accumulator;
+    
+    u32 fpsTime, fpsCounter;
+
   } Time;
 
 } Synthwave_Internal;
@@ -135,20 +138,20 @@ f32 Vector4_Length(Vector* v)
   return sqrtf(Vector4_Length2(v));
 }
 
-void Vector_MultiplyMatrix(Vector* v, Matrix* m)
+void Vector_MultiplyMatrix(Vector* out, Matrix* m, Vector* v)
 {
-  v->x = v->x * m->row[0].x + v->y * m->row[1].x + v->z * m->row[2].x;
-  v->y = v->x * m->row[0].y + v->y * m->row[1].y + v->z * m->row[2].y;
-  v->z = v->x * m->row[0].z + v->y * m->row[1].z + v->z * m->row[2].z;
-  v->w = 1.0f;
+  out->x = v->x * m->row[0].x + v->y * m->row[1].x + v->z * m->row[2].x;
+  out->y = v->x * m->row[0].y + v->y * m->row[1].y + v->z * m->row[2].y;
+  out->z = v->x * m->row[0].z + v->y * m->row[1].z + v->z * m->row[2].z;
+  out->w = 1.0f;
 }
 
-void Vector4_MultiplyMatrix(Vector* v, Matrix* m)
+void Vector4_MultiplyMatrix(Vector* out, Matrix* m, Vector* v)
 {
-  v->x = v->x * m->row[0].x + v->y * m->row[1].x + v->z * m->row[2].x + v->w * m->row[3].x;
-  v->y = v->x * m->row[0].y + v->y * m->row[1].y + v->z * m->row[2].y + v->w * m->row[3].y;
-  v->z = v->x * m->row[0].z + v->y * m->row[1].z + v->z * m->row[2].z + v->w * m->row[3].z;
-  v->w = v->x * m->row[0].w + v->y * m->row[1].w + v->z * m->row[2].w + v->w * m->row[3].w;
+  out->x = v->x * m->row[0].x + v->y * m->row[1].x + v->z * m->row[2].x + v->w * m->row[3].x;
+  out->y = v->x * m->row[0].y + v->y * m->row[1].y + v->z * m->row[2].y + v->w * m->row[3].y;
+  out->z = v->x * m->row[0].z + v->y * m->row[1].z + v->z * m->row[2].z + v->w * m->row[3].z;
+  out->w = v->x * m->row[0].w + v->y * m->row[1].w + v->z * m->row[2].w + v->w * m->row[3].w;
 }
 
 void Matrix_Multiply(Matrix* out, Matrix* a, Matrix* b)
@@ -360,6 +363,77 @@ void Rotation_Normalize(Rotation* rotation)
   rotation->yaw   = $NormaliseDegrees(rotation->yaw);
 }
 
+void Mesh_Recalculate(Mesh* mesh, bool bounds, bool normals)
+{
+  if (bounds)
+  {
+    Vector min, max;
+    min.x = +10000.0f; min.y = +10000.0f; min.z = +10000.0f;
+    max.x = -10000.0f; max.y = -10000.0f; max.z = -10000.0f;
+
+    for(u32 ii=0;ii < mesh->numTriangles;ii++)
+    {
+      Triangle* triangle = &mesh->triangles[ii];
+      for(u32 jj=0;jj < 3;jj++)
+      {
+        Vector* v = &triangle->v[jj];
+        min.x = $Min(min.x, v->x);
+        min.y = $Min(min.y, v->y);
+        min.z = $Min(min.z, v->z);
+        max.x = $Max(max.x, v->x);
+        max.y = $Max(max.y, v->y);
+        max.z = $Max(max.z, v->z);
+      }
+    }
+
+    mesh->aabb.min = min;
+    mesh->aabb.max = max;
+    Vector_Add(&mesh->boundingBox.centre, &mesh->aabb.max, &mesh->aabb.min);
+    Vector_Mul_s(&mesh->boundingBox.centre, &mesh->boundingBox.centre, 0.5f);
+    Vector_Sub(&mesh->boundingBox.halfSize, &mesh->aabb.max, &mesh->aabb.min);
+    Vector_Mul_s(&mesh->boundingBox.halfSize, &mesh->boundingBox.halfSize, 0.5f);
+
+    mesh->boundingSphere.centre = mesh->boundingBox.centre;
+    Vector fullSize = mesh->boundingBox.halfSize;
+    Vector_Mul_s(&fullSize, &fullSize, 2.0f);
+
+    mesh->boundingSphere.radius = Vector_Length(&fullSize);
+  }
+
+  if (normals)
+  {
+    for(u32 ii=0;ii < mesh->numTriangles;ii++)
+    {
+      Triangle* triangle = &mesh->triangles[ii];
+      for(u32 jj=0;jj < 3;jj++)
+      {
+        Vector* v = &triangle->v[jj];
+        v->w = 1.0f;
+      }
+
+      Vector nu;
+      nu.x = triangle->v[1].x - triangle->v[0].x;
+      nu.y = triangle->v[1].y - triangle->v[0].y;
+      nu.z = triangle->v[1].z - triangle->v[0].z;
+
+      Vector nv;
+      nv.x = triangle->v[2].x - triangle->v[1].x;
+      nv.y = triangle->v[2].y - triangle->v[1].y;
+      nv.z = triangle->v[2].z - triangle->v[1].z;
+
+      Vector normal;
+      normal.x = nu.y * nv.z - nu.z * nv.y;
+      normal.y = nu.z * nv.x - nu.x * nv.z;
+      normal.z = nu.x * nv.y - nu.y * nv.x;
+      normal.w = 1.0f;
+      Vector_Normalise(&normal);
+
+      triangle->n = normal;
+    }
+  }
+
+}
+
 u32 Synthwave_Time_GetTicks()
 {
   return SDL_GetTicks();
@@ -380,7 +454,7 @@ void Synthwave_Mem_Temp_Shutdown(u32 memorySize)
   $$.Mem.tempEnd     = NULL;
 }
 
-void Synthwave_Mem_Temp_Reset(u32 memorySize)
+void Synthwave_Mem_Temp_Reset()
 {
   $$.Mem.tempCurrent = $$.Mem.tempStart;
 }
@@ -558,6 +632,36 @@ void Synthwave_Surface_Render(Surface* surface)
   SDL_RenderCopy($$.Screen.renderer, s->texture, NULL, NULL);
 }
 
+inline void Synthwave_FrameBuffer_SetPalette(Synthwave_FrameBuffer* fb, i32 x, i32 y, u8 palette)
+{
+  fb->palette[x + (y * fb->w)] = palette;
+}
+
+inline u8 Synthwave_FrameBuffer_GetPalette(Synthwave_FrameBuffer* fb, i32 x, i32 y)
+{
+  return fb->palette[x + (y * fb->w)];
+}
+
+inline void Synthwave_FrameBuffer_SetDepth(Synthwave_FrameBuffer* fb, i32 x, i32 y, f32 depth)
+{
+  fb->depth[x + (y * fb->w)] = depth;
+}
+
+inline f32 Synthwave_FrameBuffer_GetDepth(Synthwave_FrameBuffer* fb, i32 x, i32 y)
+{
+  return fb->depth[x + (y * fb->w)];
+}
+
+inline void Synthwave_FrameBuffer_SetBrightness(Synthwave_FrameBuffer* fb, i32 x, i32 y, f32 depth)
+{
+  fb->brightness[x + (y * fb->w)] = depth;
+}
+
+inline f32 Synthwave_FrameBuffer_GetBrightness(Synthwave_FrameBuffer* fb, i32 x, i32 y)
+{
+  return fb->brightness[x + (y * fb->w)];
+}
+
 Scene Synthwave_Scene_NewXywh(i16 x, i16 y, u16 w, u16 h)
 {
   Synthwave_Scene* scene = (Synthwave_Scene*) Synthwave_Mem_Heap(NULL, sizeof(Synthwave_Scene));
@@ -567,9 +671,9 @@ Scene Synthwave_Scene_NewXywh(i16 x, i16 y, u16 w, u16 h)
   scene->fb.y = y;
   scene->fb.w = w;
   scene->fb.h = h;
-  scene->fb.paletteMem     = $.Mem.Heap(NULL, sizeof(u8)  * (w * 2) + (w * h));
-  scene->fb.depthMem       = $.Mem.Heap(NULL, sizeof(f32) * (w * 2) + (w * h));
-  scene->fb.brightnessMem  = $.Mem.Heap(NULL, sizeof(f32) * (w * 2) + (w * h));
+  scene->fb.paletteMem     = $.Mem.Heap(NULL, sizeof(u8)  * ((w * 2) + (w * h)));
+  scene->fb.depthMem       = $.Mem.Heap(NULL, sizeof(f32) * ((w * 2) + (w * h)));
+  scene->fb.brightnessMem  = $.Mem.Heap(NULL, sizeof(f32) * ((w * 2) + (w * h)));
   
   scene->fb.palette    = scene->fb.paletteMem    + scene->fb.w;
   scene->fb.depth      = scene->fb.depthMem      + scene->fb.w;
@@ -581,7 +685,7 @@ Scene Synthwave_Scene_NewXywh(i16 x, i16 y, u16 w, u16 h)
     w, h
   );
   
-  Matrix_Projection(&scene->projection, scene->fb.w, scene->fb.h, 70.0f, 1.0f, 100.0f);
+  Matrix_Projection(&scene->projection, scene->fb.w, scene->fb.h, $Deg2Rad(70.0f), 1.0f, 100.0f);
   Matrix_Screen(&scene->screen, scene->fb.w, scene->fb.h);
 
   Scene s;
@@ -641,6 +745,179 @@ void Synthwave_Scene_SetProjection(Scene* scene, f32 fovY, f32 nearPlane, f32 fa
   s->vpsOutOfDate = true;
 }
 
+typedef struct
+{
+  i32 x, y;
+} Synthwave_Pixel_Vector;
+
+typedef struct
+{
+  struct {  
+    Vector v[3], normal, lightDir;
+    Matrix point2World, vector2World, point2Screen;
+  } in;
+  struct {
+    Vector v[3], normal;
+    f32   lightDiff;
+  } out;
+} Synthwave_TriangleShader_AttributesAndUniforms;
+
+typedef struct
+{
+  struct {
+    Synthwave_Pixel_Vector  p;
+    f32                     lightDiff;
+    u8                      triangleColour;
+  } in;
+  struct {
+    u8      colour;
+    f32     brightness;
+  } out;
+} Synthwave_FragmentShader_InputsAndUniforms;
+
+static bool Synthwave_Rasterize_Triangle(Synthwave_FrameBuffer* fb, Synthwave_TriangleShader_AttributesAndUniforms* t, u8 colour)
+{
+  Synthwave_Pixel_Vector r[3];
+  f32 z[3];
+
+  for(u32 ii=0;ii < 3;ii++)
+  {
+    r[ii].x = (i32) (t->out.v[ii].x + 0.5f);
+    r[ii].y = (i32) (t->out.v[ii].y + 0.5f);
+    z[ii]   = (t->out.v[ii].z);
+  }
+  
+  // Reject 0 sized triangles
+  i32 A0 = r[1].y - r[2].y;
+  i32 B0 = r[2].x - r[1].x;
+  i32 C0 = r[1].x * r[2].y - r[2].x * r[1].y;
+  i32 triArea = A0 * r[0].x + B0 * r[0].y + C0;
+  
+  if (triArea <= 0)
+    return false;
+  
+  // Reject triangle if not on screen
+  i32 minX = $Max($Min3(r[0].x, r[1].x, r[2].x), 0) & (i32) 0xFFFFFFFE;
+  i32 maxX = $Min($Max3(r[0].x, r[1].x, r[2].x), (fb->w - 1));
+  i32 minY = $Max($Min3(r[0].y, r[1].y, r[2].y), 0) & (i32) 0xFFFFFFFE;
+  i32 maxY = $Min($Max3(r[0].y, r[1].y, r[2].y), (fb->h - 1));
+  
+  if(maxX < minX || maxY < minY)
+    return false;
+  
+  i32 A1 = r[2].y - r[0].y;
+  i32 A2 = r[0].y - r[1].y;
+  i32 B1 = r[0].x - r[2].x;
+  i32 B2 = r[1].x - r[0].x;
+  i32 C1 = r[2].x * r[0].y - r[0].x * r[2].y;
+  i32 C2 = r[0].x * r[1].y - r[1].x * r[0].y;
+  
+  f32 oneOverTriArea = (1.0f/ (f32)(triArea));
+  
+  z[1] = (z[1] - z[0]) * oneOverTriArea;
+  z[2] = (z[2] - z[0]) * oneOverTriArea;
+  
+  f32 zx = A1 * z[1] + A2 * z[2];
+  
+  Synthwave_FragmentShader_InputsAndUniforms params;
+  params.in.p.x = minX;
+  params.in.p.y = minY;
+  params.in.lightDiff = t->out.lightDiff;
+  params.in.triangleColour = colour;
+
+  i32 w0Row = (A0 * params.in.p.x) + (B0 * params.in.p.y) + C0;
+  i32 w1Row = (A1 * params.in.p.x) + (B1 * params.in.p.y) + C1;
+  i32 w2Row = (A2 * params.in.p.x) + (B2 * params.in.p.y) + C2;
+
+  for(params.in.p.y = minY; params.in.p.y <= maxY; params.in.p.y++)
+  {
+    i32 w0 = w0Row;
+    i32 w1 = w1Row;
+    i32 w2 = w2Row;
+
+    f32 depth = z[0] + z[1] * w1 + z[2] * w2;
+
+    for(params.in.p.x = minX; params.in.p.x <= maxX;params.in.p.x++)
+    {
+      if ((w0 | w1 | w2) >= 0)
+      {
+        f32 prevDepth = Synthwave_FrameBuffer_GetDepth(fb, params.in.p.x, params.in.p.y);
+        if (depth > prevDepth)
+        {
+          params.out.colour     = params.in.triangleColour;
+          params.out.brightness = $Clamp(0.25f + params.in.lightDiff, 0.0f, 1.0f);
+         
+          Synthwave_FrameBuffer_SetDepth(fb,       params.in.p.x, params.in.p.y, depth);
+          Synthwave_FrameBuffer_SetPalette(fb,     params.in.p.x, params.in.p.y, params.out.colour);
+          Synthwave_FrameBuffer_SetBrightness(fb,  params.in.p.x, params.in.p.y, params.out.brightness);
+        }
+      }
+
+      w0 += A0;
+      w1 += A1;
+      w2 += A2;
+      depth += zx;
+    }
+    
+    w0Row += B0;
+    w1Row += B1;
+    w2Row += B2;
+  }
+
+  return true;
+}
+
+inline bool ScreenCoords(Vector* v)
+{
+  f32 w = v->w, z = v->z;
+
+  v->x = v->x / v->w;
+  v->y = v->y / v->w;
+  v->z = v->z / v->w;
+  v->w = 1.0f;
+
+  return z > w;
+}
+
+void Synthwave_Scene_Submit_Mesh(Synthwave_Scene* scene, Synthwave_FrameBuffer* fb, Matrix* vps, Mesh* mesh, Matrix* worldMatrix, u8 shader)
+{
+  Synthwave_TriangleShader_AttributesAndUniforms triParams;
+  triParams.in.lightDir = scene->lightDirection;
+
+  triParams.in.point2World = *worldMatrix;
+  triParams.in.vector2World = triParams.in.point2World;
+  Matrix_Set_Translation(&triParams.in.vector2World, 0,0,0);
+  Matrix_Multiply(&triParams.in.point2Screen, vps, &triParams.in.point2World);
+  
+  for(u32 ii=0;ii < mesh->numTriangles;ii++)
+  {
+    Triangle* triangle = &mesh->triangles[ii];
+
+    triParams.in.v[0]   = triangle->v[0];
+    triParams.in.v[1]   = triangle->v[1];
+    triParams.in.v[2]   = triangle->v[2];
+    triParams.in.normal = triangle->n;
+    
+    Vector4_MultiplyMatrix(&triParams.out.v[0], &triParams.in.point2Screen, &triParams.in.v[0]);
+    if (ScreenCoords(&triParams.out.v[0]))
+      continue;
+
+    Vector4_MultiplyMatrix(&triParams.out.v[1], &triParams.in.point2Screen, &triParams.in.v[1]);
+    if (ScreenCoords(&triParams.out.v[1]))
+      continue;
+
+    Vector4_MultiplyMatrix(&triParams.out.v[2], &triParams.in.point2Screen, &triParams.in.v[2]);
+    if (ScreenCoords(&triParams.out.v[2]))
+      continue;
+
+    Vector4_MultiplyMatrix(&triParams.out.normal, &triParams.in.vector2World, &triParams.in.normal);
+
+    triParams.out.lightDiff = fabsf(Vector_Dot(&triParams.out.normal, &triParams.in.lightDir));
+
+    Synthwave_Rasterize_Triangle(fb, &triParams, triangle->colour);
+  }
+}
+
 void Synthwave_Scene_Submit(Scene* scene, Surface* surface)
 {
   if (scene->opaque == 0 || surface->opaque == 0)
@@ -669,18 +946,32 @@ void Synthwave_Scene_Submit(Scene* scene, Surface* surface)
 
     s->vpsOutOfDate = false;
   }
+  
+  u32 numDrawCmds = Array_Size(s->drawCmds);
+  for(u32 ii=0;ii < numDrawCmds;ii++)
+  {
+    Synthwave_Scene_DrawCommand* cmd = &s->drawCmds[ii];
+    switch(cmd->type)
+    {
+      case Synthwave_Scene_DrawCommand_DrawMesh:
+      {
+        Synthwave_Scene_Submit_Mesh(s, &s->fb, &s->viewProjectionScreen, cmd->drawMesh.mesh, &cmd->drawMesh.worldMatrix, 0);
+      }
+      break;
+    }
+  }
 
-  // @TODO Draw Cmds Here.
+  Array_Clear(s->drawCmds);
   
   u8* pixels = NULL;
   i32 pixelPitch = 0;
-
+  
   SDL_LockTexture(fb->texture, NULL, (void*) &pixels, &pixelPitch);
-
+  
   Colour* palette = $$.Palette.colour;
-
-#define $$RENDER_TYPE 0
-
+  
+  #define $$RENDER_TYPE 0
+  
   for(u32 i=0, j=0;i < fbSize;i++,j+=4 /* RGBA for some reason */)
   {
 #if $$RENDER_TYPE == 0
@@ -719,14 +1010,27 @@ void Synthwave_Scene_Submit(Scene* scene, Surface* surface)
 
 void Synthwave_Scene_RenderMesh(Scene* scene, Matrix* worldMatrix, Mesh* mesh)
 {
+  if (scene->opaque == 0)
+    return;
   
+  Synthwave_Scene* s = (Synthwave_Scene*) (scene->opaque);
+  
+  Synthwave_Scene_DrawCommand* cmd;
+  Array_PushAndFillOut(s->drawCmds, cmd);
+  
+  cmd->type                 = Synthwave_Scene_DrawCommand_DrawMesh;
+  cmd->drawMesh.worldMatrix = *worldMatrix;
+  cmd->drawMesh.mesh        = mesh;
 }
 
 void Synthwave_Frame()
 {
+  $.Time.numFrames++;
+  $$.Time.fpsCounter++;
+
   $.Time.frameMs = Timer_GetTimeAndReset(&$$.Time.frameTimer);
   $.Time.frame   = $.Time.frameMs / 1000.0f;
-
+  
   SDL_Event event;
 
   while (SDL_PollEvent(&event))
@@ -739,15 +1043,15 @@ void Synthwave_Frame()
       }
     }
   }
-
+  
   u32 frameTime = $.Time.frameMs;
   if (frameTime > 250)
     frameTime = 250;
   
   if ($$.desc.Events.OnFixedFrame != NULL)
   {
+#if 1
     $$.Time.accumulator += frameTime;
-
     while($$.Time.accumulator >= $$.desc.Time.fixedMs)
     {
       $.Time.fixedMs = $$.desc.Time.fixedMs;
@@ -757,12 +1061,25 @@ void Synthwave_Frame()
       
       $$.Time.accumulator -= $.Time.fixedMs;
     }
+#else
+    $.Time.fixedMs = $$.desc.Time.fixedMs;
+    $.Time.fixed   = $$.desc.Time.fixedMs / 1000.0f;
+    $$.desc.Events.OnFixedFrame();
+#endif
   }
 
   $MaybeFunction($$.desc.Events.OnFrame, /**/);
   
   SDL_RenderPresent($$.Screen.renderer);
-  $.Time.numFrames++;
+  Synthwave_Mem_Temp_Reset();
+
+  if ($$.Time.fpsTime < SDL_GetTicks() - 1000)
+  {
+    $$.Time.fpsTime = SDL_GetTicks();
+    $.Time.fps = $$.Time.fpsCounter;
+    $$.Time.fpsCounter = 0;
+  }
+
 }
 
 #if $IsWindows == 1
@@ -797,6 +1114,9 @@ int main(int argc, char** argv)
   $.Debug.LogF          = Synthwave_Debug_LogF;
   $.Text.Format         = Synthwave_Text_Format;
   $.Text.FormatHeap     = Synthwave_Text_FormatHeap;
+  $.Surface.New         = Synthwave_Surface_New;
+  $.Surface.Delete      = Synthwave_Surface_Delete;
+  $.Surface.Render      = Synthwave_Surface_Render;
   $.Scene.New           = Synthwave_Scene_New;
   $.Scene.NewXywh       = Synthwave_Scene_NewXywh;
   $.Scene.Delete        = Synthwave_Scene_Delete;
@@ -857,7 +1177,9 @@ int main(int argc, char** argv)
       
       SDL_GetWindowPosition($$.Screen.window, &$.Screen.x, &$.Screen.y);
       SDL_GetWindowSize($$.Screen.window, (i32*) &$.Screen.width, (i32*) &$.Screen.height);
-      
+      $.Screen.width  = $.Screen.width / $$.desc.Screen.scale;
+      $.Screen.height = $.Screen.height / $$.desc.Screen.scale;
+
       $$.Screen.renderer = SDL_CreateRenderer(
         $$.Screen.window, 
         -1, 
@@ -869,19 +1191,21 @@ int main(int argc, char** argv)
 
   $MaybeFunction($$.desc.Events.OnStart, /**/);
 
-  Timer_Reset(&$$.Time.fixedLimiter);
-  Timer_Reset(&$$.Time.frameTimer);
-  Timer_Reset(&$$.Time.fpsTimer);
+  Timer_Start(&$$.Time.fixedLimiter);
+  Timer_Start(&$$.Time.frameTimer);
+  Timer_Start(&$$.Time.fpsTimer);
   
   if ($$.Screen.flags != 0)
   {
 #if $IsWindows == 1
     while($.quit == false)
     {
+      Timer_Start(&$$.Time.fixedLimiter);
+
       Synthwave_Frame();
       
-      u32 frameMs = Timer_GetTime(&$$.Time.frameTimer);
-
+      u32 frameMs = Timer_GetTime(&$$.Time.fixedLimiter);
+      
       if (frameMs < $$.desc.Time.frameMs)
       {
         SDL_Delay($$.desc.Time.frameMs - frameMs);
