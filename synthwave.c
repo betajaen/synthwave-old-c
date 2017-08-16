@@ -288,19 +288,20 @@ void Matrix_LookAt(Matrix* m, Vector* position, Vector* target, Vector* up)
   Vector_Normalise(&z);
 
   Vector x;
+  Vector_Set(up, 0, 1, 0);
   Vector_Cross(&x, up, &z);
   Vector_Normalise(&x);
 
   Vector y;
   Vector_Cross(&y, &z, &x);
   
-  m->M[0][0] = x.x;   m->M[0][1] = y.x;   m->M[0][2] = z.x;   m->M[0][3] = 0.0f;
-  m->M[1][0] = x.y;   m->M[1][1] = y.y;   m->M[1][2] = z.y;   m->M[1][3] = 0.0f;
-  m->M[2][0] = x.z;   m->M[2][1] = y.z;   m->M[2][2] = z.z;   m->M[2][3] = 0.0f;
+  m->M[0][0] = x.x;   m->M[0][1] = x.y;   m->M[0][2] = x.z;   m->M[0][3] = 0.0f;
+  m->M[1][0] = y.x;   m->M[1][1] = y.y;   m->M[1][2] = y.z;   m->M[1][3] = 0.0f;
+  m->M[2][0] = z.x;   m->M[2][1] = z.y;   m->M[2][2] = z.z;   m->M[2][3] = 0.0f;
 
-  m->M[3][0] = -Vector_Dot(&x, position);
-  m->M[3][1] = -Vector_Dot(&z, position);
-  m->M[3][2] = -Vector_Dot(&x, position);
+  m->M[3][0] = position->x;
+  m->M[3][1] = position->y;
+  m->M[3][2] = position->z;
   m->M[3][3] = 1.0f;
 }
 
@@ -688,6 +689,10 @@ Scene Synthwave_Scene_NewXywh(i16 x, i16 y, u16 w, u16 h)
   Matrix_Projection(&scene->projection, scene->fb.w, scene->fb.h, $Deg2Rad(70.0f), 1.0f, 100.0f);
   Matrix_Screen(&scene->screen, scene->fb.w, scene->fb.h);
 
+  Vector_Set(&scene->lightDirection, 1, 1, 1);
+  Vector_Normalise(&scene->lightDirection);
+
+
   Scene s;
   s.opaque = (u64) scene;
   return s;
@@ -842,7 +847,7 @@ static bool Synthwave_Rasterize_Triangle(Synthwave_FrameBuffer* fb, Synthwave_Tr
       if ((w0 | w1 | w2) >= 0)
       {
         f32 prevDepth = Synthwave_FrameBuffer_GetDepth(fb, params.in.p.x, params.in.p.y);
-        if (depth > prevDepth)
+        if (depth < prevDepth)
         {
           params.out.colour     = params.in.triangleColour;
           params.out.brightness = $Clamp(0.25f + params.in.lightDiff, 0.0f, 1.0f);
@@ -933,7 +938,7 @@ void Synthwave_Scene_Submit(Scene* scene, Surface* surface)
   
   for(u32 i=0;i < fbSize;i++)
   {
-    fb->depth[i] = 0.0f;
+    fb->depth[i] = 1.0f;
     fb->brightness[i] = 1.0f;
   }
   

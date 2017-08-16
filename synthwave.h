@@ -222,46 +222,46 @@ typedef struct
 
 extern void $Setup(Synthwave_Description* d);
 
-inline f32 $Deg2Rad(f32 rad) { return ((rad) * 180.0f / $PI); }
-inline f32 $Rad2Deg(f32 deg) { return ((deg) * $PI    / 180.0f); }
+inline f32 $Deg2Rad(f32 deg) { return ((deg) * $PI    / 180.0f); }
+inline f32 $Rad2Deg(f32 rad) { return ((rad) * 180.0f / $PI);  }
 f32 $NormaliseDegrees(f32 deg);
 f32 $NormaliseRadians(f32 rad);
 
-inline void Vector2_Set(Vector* v, f32 x, f32 y)               { v->m[0] = x; v->m[1] = y; v->m[2] = 0; v->m[3] = 1.0f; }
-inline void Vector_Set(Vector* v, f32 x, f32 y, f32 z)         { v->m[0] = x; v->m[1] = y; v->m[2] = z; v->m[3] = 1.0f; }
-inline void Vector4_Set(Vector* v, f32 x, f32 y, f32 z, f32 w) { v->m[0] = x; v->m[1] = y; v->m[2] = z; v->m[3] = w;    }
-inline void Vector2_Add(Vector* v, Vector* a, Vector* b)       { Vector2_Set(v, a->m[0] + b->m[0], a->m[1] + b->m[1]); }
-inline void Vector_Add(Vector* v, Vector* a, Vector* b)        { Vector_Set(v, a->m[0] + b->m[0], a->m[1] + b->m[1], a->m[2] + b->m[2]); }
-inline void Vector4_Add(Vector* v, Vector* a, Vector* b)       { Vector4_Set(v, a->m[0] + b->m[0], a->m[1] + b->m[1], a->m[2] + b->m[2], a->m[3] + b->m[3]); }
-inline void Vector2_Add_s(Vector* v, Vector* a, f32 s)         { Vector2_Set(v, a->m[0] + s, a->m[1] + s); }
-inline void Vector_Add_s(Vector* v, Vector* a, f32 s)          { Vector_Set(v, a->m[0] + s, a->m[1] + s, a->m[2] + s); }
-inline void Vector4_Add_s(Vector* v, Vector* a, f32 s)         { Vector4_Set(v, a->m[0] + s, a->m[1] + s, a->m[2] + s, a->m[3] + s); } ;
-inline void Vector2_Sub(Vector* v, Vector* a, Vector* b)       { Vector2_Set(v, a->m[0] - b->m[0], a->m[1] - b->m[1]); }
-inline void Vector_Sub(Vector* v, Vector* a, Vector* b)        { Vector_Set(v, a->m[0] - b->m[0], a->m[1] - b->m[1], a->m[2] - b->m[2]); }
-inline void Vector4_Sub(Vector* v, Vector* a, Vector* b)       { Vector4_Set(v, a->m[0] - b->m[0], a->m[1] - b->m[1], a->m[2] - b->m[2], a->m[3] - b->m[3]); }
-inline void Vector2_Sub_s(Vector* v, Vector* a, f32 s)         { Vector2_Set(v, a->m[0] - s, a->m[1] - s); }
-inline void Vector_Sub_s(Vector* v, Vector* a, f32 s)          { Vector_Set(v, a->m[0] - s, a->m[1] - s, a->m[2] - s); }
-inline void Vector4_Sub_s(Vector* v, Vector* a, f32 s)         { Vector4_Set(v, a->m[0] - s, a->m[1] - s, a->m[2] - s, a->m[3] - s); } ;
-inline void Vector2_Mul(Vector* v, Vector* a, Vector* b)       { Vector2_Set(v, a->m[0] * b->m[0], a->m[1] * b->m[1]); }
-inline void Vector_Mul(Vector* v, Vector* a, Vector* b)        { Vector_Set(v, a->m[0] * b->m[0], a->m[1] * b->m[1], a->m[2] * b->m[2]); }
-inline void Vector4_Mul(Vector* v, Vector* a, Vector* b)       { Vector4_Set(v, a->m[0] * b->m[0], a->m[1] * b->m[1], a->m[2] * b->m[2], a->m[3] * b->m[3]); }
-inline void Vector2_Mul_s(Vector* v, Vector* a, f32 s)         { Vector2_Set(v, a->m[0] * s, a->m[1] * s); }
-inline void Vector_Mul_s(Vector* v, Vector* a, f32 s)          { Vector_Set(v, a->m[0] * s, a->m[1] * s, a->m[2] * s); }
-inline void Vector4_Mul_s(Vector* v, Vector* a, f32 s)         { Vector4_Set(v, a->m[0] * s, a->m[1] * s, a->m[2] * s, a->m[3] * s); } ;
-inline void Vector2_Div(Vector* v, Vector* a, Vector* b)       { Vector2_Set(v, a->m[0] / b->m[0], a->m[1] / b->m[1]); }
-inline void Vector_Div(Vector* v, Vector* a, Vector* b)        { Vector_Set(v, a->m[0] / b->m[0], a->m[1] / b->m[1], a->m[2] / b->m[2]); }
-inline void Vector4_Div(Vector* v, Vector* a, Vector* b)       { Vector4_Set(v, a->m[0] / b->m[0], a->m[1] / b->m[1], a->m[2] / b->m[2], a->m[3] / b->m[3]); }
-inline void Vector2_Div_s(Vector* v, Vector* a, f32 s)         { Vector2_Set(v, a->m[0] / s, a->m[1] / s); }
-inline void Vector_Div_s(Vector* v, Vector* a, f32 s)          { Vector_Set(v, a->m[0] / s, a->m[1] / s, a->m[2] / s); }
-inline void Vector4_Div_s(Vector* v, Vector* a, f32 s)         { Vector4_Set(v, a->m[0] / s, a->m[1] / s, a->m[2] / s, a->m[3] / s); } ;
+inline void Vector2_Set(Vector* v, f32 x, f32 y)               { v->x = x; v->y = y; v->z = 0; v->w = 1.0f; }
+inline void Vector_Set(Vector* v, f32 x, f32 y, f32 z)         { v->x = x; v->y = y; v->z = z; v->w = 1.0f; }
+inline void Vector4_Set(Vector* v, f32 x, f32 y, f32 z, f32 w) { v->x = x; v->y = y; v->z = z; v->w = w;    }
+inline void Vector2_Add(Vector* v, Vector* a, Vector* b)       { Vector2_Set(v, a->x + b->x, a->y + b->y); }
+inline void Vector_Add(Vector* v, Vector* a, Vector* b)        { Vector_Set(v, a->x + b->x, a->y + b->y, a->z + b->z); }
+inline void Vector4_Add(Vector* v, Vector* a, Vector* b)       { Vector4_Set(v, a->x + b->x, a->y + b->y, a->z + b->z, a->w + b->w); }
+inline void Vector2_Add_s(Vector* v, Vector* a, f32 s)         { Vector2_Set(v, a->x + s, a->y + s); }
+inline void Vector_Add_s(Vector* v, Vector* a, f32 s)          { Vector_Set(v, a->x + s, a->y + s, a->z + s); }
+inline void Vector4_Add_s(Vector* v, Vector* a, f32 s)         { Vector4_Set(v, a->x + s, a->y + s, a->z + s, a->w + s); } ;
+inline void Vector2_Sub(Vector* v, Vector* a, Vector* b)       { Vector2_Set(v, a->x - b->x, a->y - b->y); }
+inline void Vector_Sub(Vector* v, Vector* a, Vector* b)        { Vector_Set(v, a->x - b->x, a->y - b->y, a->z - b->z); }
+inline void Vector4_Sub(Vector* v, Vector* a, Vector* b)       { Vector4_Set(v, a->x - b->x, a->y - b->y, a->z - b->z, a->w - b->w); }
+inline void Vector2_Sub_s(Vector* v, Vector* a, f32 s)         { Vector2_Set(v, a->x - s, a->y - s); }
+inline void Vector_Sub_s(Vector* v, Vector* a, f32 s)          { Vector_Set(v, a->x - s, a->y - s, a->z - s); }
+inline void Vector4_Sub_s(Vector* v, Vector* a, f32 s)         { Vector4_Set(v, a->x - s, a->y - s, a->z - s, a->w - s); } ;
+inline void Vector2_Mul(Vector* v, Vector* a, Vector* b)       { Vector2_Set(v, a->x * b->x, a->y * b->y); }
+inline void Vector_Mul(Vector* v, Vector* a, Vector* b)        { Vector_Set(v, a->x * b->x, a->y * b->y, a->z * b->z); }
+inline void Vector4_Mul(Vector* v, Vector* a, Vector* b)       { Vector4_Set(v, a->x * b->x, a->y * b->y, a->z * b->z, a->w * b->w); }
+inline void Vector2_Mul_s(Vector* v, Vector* a, f32 s)         { Vector2_Set(v, a->x * s, a->y * s); }
+inline void Vector_Mul_s(Vector* v, Vector* a, f32 s)          { Vector_Set(v, a->x * s, a->y * s, a->z * s); }
+inline void Vector4_Mul_s(Vector* v, Vector* a, f32 s)         { Vector4_Set(v, a->x * s, a->y * s, a->z * s, a->w * s); } ;
+inline void Vector2_Div(Vector* v, Vector* a, Vector* b)       { Vector2_Set(v, a->x / b->x, a->y / b->y); }
+inline void Vector_Div(Vector* v, Vector* a, Vector* b)        { Vector_Set(v, a->x / b->x, a->y / b->y, a->z / b->z); }
+inline void Vector4_Div(Vector* v, Vector* a, Vector* b)       { Vector4_Set(v, a->x / b->x, a->y / b->y, a->z / b->z, a->w / b->w); }
+inline void Vector2_Div_s(Vector* v, Vector* a, f32 s)         { Vector2_Set(v, a->x / s, a->y / s); }
+inline void Vector_Div_s(Vector* v, Vector* a, f32 s)          { Vector_Set(v, a->x / s, a->y / s, a->z / s); }
+inline void Vector4_Div_s(Vector* v, Vector* a, f32 s)         { Vector4_Set(v, a->x / s, a->y / s, a->z / s, a->w / s); } ;
 
-inline f32  Vector2_Dot(Vector* a, Vector* b)                  { return a->m[0] * b->m[0] + a->m[1] * b->m[1]; }
-inline f32  Vector_Dot(Vector* a, Vector* b)                   { return a->m[0] * b->m[0] + a->m[1] * b->m[1] + a->m[2] * b->m[2]; }
-inline f32  Vector4_Dot(Vector* a, Vector* b)                  { return a->m[0] * b->m[0] + a->m[1] * b->m[1] + a->m[2] * b->m[2] + a->m[3] * b->m[3]; }
+inline f32  Vector2_Dot(Vector* a, Vector* b)                  { return a->x * b->x + a->y * b->y; }
+inline f32  Vector_Dot(Vector* a, Vector* b)                   { return a->x * b->x + a->y * b->y + a->z * b->z; }
+inline f32  Vector4_Dot(Vector* a, Vector* b)                  { return a->x * b->x + a->y * b->y + a->z * b->z + a->w * b->w; }
 
-inline void Vector_Cross(Vector* v, Vector* a, Vector* b)      { v->m[0] = a->m[1] * b->m[2] - b->m[1] * a->m[2];
-                                                                 v->m[1] = a->m[2] * b->m[0] - b->m[2] * a->m[0];
-                                                                 v->m[2] = a->m[0] * b->m[1] - b->m[0] * a->m[1];
+inline void Vector_Cross(Vector* v, Vector* a, Vector* b)      { v->x = a->y * b->z - b->y * a->z;
+                                                                 v->y = a->z * b->x - b->z * a->x;
+                                                                 v->z = a->x * b->y - b->x * a->y;
                                                                }
 
 inline f32 Vector2_Length2(Vector* v)                          { return Vector2_Dot(v, v); }
