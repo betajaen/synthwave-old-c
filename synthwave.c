@@ -288,16 +288,15 @@ void Matrix_LookAt(Matrix* m, Vector* position, Vector* target, Vector* up)
   Vector_Normalise(&z);
 
   Vector x;
-  Vector_Set(up, 0, 1, 0);
   Vector_Cross(&x, up, &z);
   Vector_Normalise(&x);
 
   Vector y;
   Vector_Cross(&y, &z, &x);
-  
+
   m->M[0][0] = x.x;   m->M[0][1] = x.y;   m->M[0][2] = x.z;   m->M[0][3] = 0.0f;
   m->M[1][0] = y.x;   m->M[1][1] = y.y;   m->M[1][2] = y.z;   m->M[1][3] = 0.0f;
-  m->M[2][0] = z.x;   m->M[2][1] = z.y;   m->M[2][2] = z.z;   m->M[2][3] = 0.0f;
+  m->M[2][0] = z.x;   m->M[2][1] = y.y;   m->M[2][2] = z.z;   m->M[2][3] = 0.0f;
 
   m->M[3][0] = position->x;
   m->M[3][1] = position->y;
@@ -1248,13 +1247,13 @@ int main(int argc, char** argv)
 #endif
 
 #if $IsWindows == 1
-static BOOL WINAPI Synthwave_Win32_ConsoleHandler(DWORD signal) {
-
-    if (signal == CTRL_C_EVENT)
-    {
-      $.quit = true;
-    }
-    return TRUE;
+static BOOL WINAPI Synthwave_Win32_ConsoleHandler(DWORD signal)
+{
+  if (signal == CTRL_C_EVENT)
+  {
+    $.quit = true;
+  }
+  return TRUE;
 }
 
 static void Synthwave_Win32_SetupConsoleHandler()

@@ -276,6 +276,8 @@ inline void Vector2_Normalise(Vector* v)                       { Vector2_Mul_s(v
 inline void Vector_Normalise(Vector* v)                        { Vector_Mul_s(v, v, (1.0f / Vector_Length(v))); }
 inline void Vector4_Normalise(Vector* v)                       { Vector4_Mul_s(v, v, (1.0f / Vector_Length(v))); }
 
+inline void Vector_Negate(Vector* out, Vector* v)              { out->x = -v->x; out->y = -v->y; out->z = -v->z; }
+
 void Vector_MultiplyMatrix(Vector* out, Matrix* m, Vector* v);
 void Vector4_MultiplyMatrix(Vector* out, Matrix* m, Vector* v);
 
