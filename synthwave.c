@@ -17,8 +17,58 @@
 #include <SDL.h>
 #include <SDL_main.h>
 
-#define $Assert(X, T) assert(X && T)
+#define $Assert(X, T)            assert(X && T)
 #define $MaybeFunction(FN, ...)  do { if (FN) { FN(__VA_ARGS__); } } while(0)
+
+typedef enum
+{
+  ST_DrawMesh = 0,
+} Synthwave_Scene_DrawCommand_Type;
+
+typedef struct
+{
+  Synthwave_Scene_DrawCommand_Type type;
+  union
+  {
+    struct
+    {
+      Matrix                       worldMatrix;
+      Mesh*                        mesh;
+      Synthwave_TriangleShader_Fn  triangle;
+      Synthwave_FragmentShader_Fn  fragment;
+    } drawMesh;
+  };
+} Synthwave_Scene_DrawCommand;
+
+typedef struct
+{
+  i16 x, y;
+  u16 w, h;
+
+  u8*  palette;
+  f32* depth;
+  f32* brightness;
+
+  u8*  paletteMem;
+  f32* depthMem;
+  f32* brightnessMem;
+
+  SDL_Texture* texture;
+} Synthwave_FrameBuffer;
+
+typedef struct
+{
+  Synthwave_FrameBuffer        fb;
+  Synthwave_Scene_DrawCommand* drawCmds;
+  Matrix                       invView, projection, screen, viewProjectionScreen;
+  Vector                       cameraPosition, cameraTarget, lightPosition;
+  bool                         vpsOutOfDate;
+} Synthwave_Scene;
+
+typedef struct
+{
+  SDL_Texture* texture;
+} Synthwave_Surface;
 
 typedef struct
 {
@@ -30,6 +80,11 @@ typedef struct
     SDL_Renderer* renderer;
     u32           flags;
   } Screen;
+
+  struct
+  {
+    u8* tempStart, *tempCurrent, *tempEnd;
+  } Mem;
 
   struct
   {
@@ -246,6 +301,58 @@ void Matrix_LookAt(Matrix* m, Vector* position, Vector* target, Vector* up)
   m->M[3][3] = 1.0f;
 }
 
+void Matrix_Projection(Matrix* out, f32 w, f32 h, f32 fovY, f32 nearClip, f32 farClip)
+{
+  f32 aspect    = (f32) w / (f32) h;
+  f32 farPlane  = farClip;
+  f32 nearPlane = nearClip;
+
+  f32 width  = tanf(fovY * 0.5f);
+  f32 height = width / aspect;
+  f32 diff   = farPlane - nearPlane;
+  f32 div    = farPlane / diff;
+
+  out->M[0][0] = 1.0f / width;
+  out->M[0][1] = 0.0f;
+  out->M[0][2] = 0.0f;
+  out->M[0][3] = 0.0f;
+  out->M[1][0] = 0.0f;
+  out->M[1][1] = 1.0f / height;
+  out->M[1][2] = 0.0f;
+  out->M[1][3] = 0.0f;
+  out->M[2][0] = 0.0f;
+  out->M[2][1] = 0.0f;
+  out->M[2][2] = div;
+  out->M[2][3] = 1.0f;
+  out->M[3][0] = 0.0f;
+  out->M[3][1] = 0.0f;
+  out->M[3][2] = -nearPlane * div;
+  out->M[3][3] = 0.0f;
+}
+
+void Matrix_Screen(Matrix* out, f32 w, f32 h)
+{
+  f32 halfW = w * 0.5f;
+  f32 halfH = h * 0.5f;
+
+  out->M[0][0] = halfW;
+  out->M[0][1] = 0.0f;
+  out->M[0][2] = 0.0f;
+  out->M[0][3] = 0.0f;
+  out->M[1][0] = 0.0f;
+  out->M[1][1] = -halfH;
+  out->M[1][2] = 0.0f;
+  out->M[1][3] = 0.0f;
+  out->M[2][0] = 0.0f;
+  out->M[2][1] = 0.0f;
+  out->M[2][2] = 1.0f;
+  out->M[2][3] = 0.0f;
+  out->M[3][0] = halfW;
+  out->M[3][1] = halfH;
+  out->M[3][2] = 0.0f;
+  out->M[3][3] = 1.0f;
+}
+
 void Rotation_Normalize(Rotation* rotation)
 {
   rotation->roll  = $NormaliseDegrees(rotation->roll);
@@ -256,6 +363,53 @@ void Rotation_Normalize(Rotation* rotation)
 u32 Synthwave_Time_GetTicks()
 {
   return SDL_GetTicks();
+}
+
+void Synthwave_Mem_Temp_Setup(u32 memorySize)
+{
+  $$.Mem.tempStart   = (u8*) malloc(memorySize);
+  $$.Mem.tempCurrent = $$.Mem.tempStart;
+  $$.Mem.tempEnd     = $$.Mem.tempStart + memorySize;
+}
+
+void Synthwave_Mem_Temp_Shutdown(u32 memorySize)
+{
+  free($$.Mem.tempStart);
+  $$.Mem.tempStart   = NULL;
+  $$.Mem.tempCurrent = NULL;
+  $$.Mem.tempEnd     = NULL;
+}
+
+void Synthwave_Mem_Temp_Reset(u32 memorySize)
+{
+  $$.Mem.tempCurrent = $$.Mem.tempStart;
+}
+
+void* Synthwave_Mem_Temp(u32 numBytes)
+{
+  void* mem = $$.Mem.tempCurrent;
+  $$.Mem.tempCurrent += numBytes;
+ 
+  $Assert($$.Mem.tempCurrent < $$.Mem.tempEnd, "Out of memory in the temporay allocator");
+ 
+  return mem;
+}
+
+void* Synthwave_Mem_Heap(void* mem, u32 numBytes)
+{
+  void* m = NULL;
+
+  if (mem == NULL && numBytes)
+  {
+    m = malloc(numBytes);
+    memset(m, 0, numBytes);
+  }
+  else if (mem != NULL && numBytes)
+    m =  realloc(mem, numBytes);
+  else if (mem != NULL && numBytes == 0)
+    free(mem);
+
+  return m;
 }
 
 void Synthwave_Palette_Add(Colour* colour)
@@ -292,6 +446,213 @@ void Synthwave_Palette_Reset()
 {
   $$.Palette.num = 0;
   memset($$.Palette.colour, 0, sizeof($$.Palette.colour));
+}
+
+Surface Synthwave_Surface_New()
+{
+  Synthwave_Surface* surface = (Synthwave_Surface*) Synthwave_Mem_Heap(NULL, sizeof(Synthwave_Surface));
+  
+  surface->texture = SDL_CreateTexture(
+    $$.Screen.renderer,
+    SDL_PIXELFORMAT_ABGR8888,
+    SDL_TEXTUREACCESS_TARGET,
+    $.Screen.width, $.Screen.height
+  );
+  
+  SDL_SetTextureBlendMode(surface->texture, SDL_BLENDMODE_BLEND);
+
+  Surface s;
+  s.opaque = (u64) surface;
+  return s;
+}
+
+void Synthwave_Surface_Delete(Surface* surface)
+{
+  if (surface->opaque == 0)
+    return;
+
+  Synthwave_Surface* s = (Synthwave_Surface*) (surface->opaque);
+  
+  SDL_DestroyTexture(s->texture);
+  s->texture = NULL;
+  
+  Synthwave_Mem_Heap(s, 0);
+
+  surface->opaque = 0;
+}
+
+void Synthwave_Surface_Render(Surface* surface)
+{
+  if (surface->opaque == 0)
+    return;
+
+  Synthwave_Surface* s = (Synthwave_Surface*) (surface->opaque);
+  
+  SDL_RenderCopy($$.Screen.renderer, s->texture, NULL, NULL);
+}
+
+Scene Synthwave_Scene_NewXywh(i16 x, i16 y, u16 w, u16 h)
+{
+  Synthwave_Scene* scene = (Synthwave_Scene*) Synthwave_Mem_Heap(NULL, sizeof(Synthwave_Scene));
+  Array_New(scene->drawCmds, 64);
+  
+  scene->fb.x = x;
+  scene->fb.y = y;
+  scene->fb.w = w;
+  scene->fb.h = h;
+  scene->fb.paletteMem     = $.Mem.Heap(NULL, sizeof(u8)  * (w * 2) + (w * h));
+  scene->fb.depthMem       = $.Mem.Heap(NULL, sizeof(f32) * (w * 2) + (w * h));
+  scene->fb.brightnessMem  = $.Mem.Heap(NULL, sizeof(f32) * (w * 2) + (w * h));
+  
+  scene->fb.palette    = scene->fb.paletteMem    + scene->fb.w;
+  scene->fb.depth      = scene->fb.depthMem      + scene->fb.w;
+  scene->fb.brightness = scene->fb.brightnessMem + scene->fb.w;
+  scene->fb.texture = SDL_CreateTexture(
+    $$.Screen.renderer,
+    SDL_PIXELFORMAT_BGR888,
+    SDL_TEXTUREACCESS_STREAMING,
+    w, h
+  );
+  
+  Matrix_Projection(&scene->projection, scene->fb.w, scene->fb.h, 70.0f, 1.0f, 100.0f);
+  Matrix_Screen(&scene->screen, scene->fb.w, scene->fb.h);
+
+  Scene s;
+  s.opaque = (u64) scene;
+  return s;
+}
+
+Scene Synthwave_Scene_New()
+{
+  return Synthwave_Scene_NewXywh(0,0,  $.Screen.width, $.Screen.height);
+}
+
+void Synthwave_Scene_Delete(Scene* scene)
+{
+  if (scene->opaque == 0)
+    return;
+
+  Synthwave_Scene* s = (Synthwave_Scene*) (scene->opaque);
+
+  Array_Delete(s->drawCmds);
+  
+  Synthwave_Mem_Heap(s->fb.brightnessMem, 0);
+  Synthwave_Mem_Heap(s->fb.paletteMem, 0);
+  Synthwave_Mem_Heap(s->fb.depthMem, 0);
+  Synthwave_Mem_Heap(s, 0);
+
+  scene->opaque = 0;
+
+}
+
+void Synthwave_Scene_SetCamera(Scene* scene, Vector* position, Vector* target)
+{
+  if (scene->opaque == 0)
+    return;
+
+  Synthwave_Scene* s = (Synthwave_Scene*) (scene->opaque);
+  
+  s->cameraPosition  = *position;
+  s->cameraTarget    = *target;
+
+  Vector up;
+  Vector_Set(&up, 0, 0, 1);
+  Matrix_LookAt(&s->invView, position, target, &up);
+  Matrix_Inverse(&s->invView, &s->invView);
+
+  s->vpsOutOfDate    = true;
+}
+
+void Synthwave_Scene_SetProjection(Scene* scene, f32 fovY, f32 nearPlane, f32 farPlane)
+{
+  if (scene->opaque == 0)
+    return;
+
+  Synthwave_Scene* s = (Synthwave_Scene*) (scene->opaque);
+  
+  Matrix_Projection(&s->projection, s->fb.w, s->fb.h, fovY, nearPlane, farPlane);
+  s->vpsOutOfDate = true;
+}
+
+void Synthwave_Scene_Submit(Scene* scene, Surface* surface)
+{
+  if (scene->opaque == 0 || surface->opaque == 0)
+    return;
+
+  Synthwave_Scene* s = (Synthwave_Scene*) (scene->opaque);
+  Synthwave_Surface* g = (Synthwave_Surface*) (surface->opaque);
+  
+  Synthwave_FrameBuffer* fb = &s->fb;
+  u32 fbSize = fb->w * fb->h;
+
+  memset(fb->palette, 0, sizeof(u8) * fbSize);
+  
+  for(u32 i=0;i < fbSize;i++)
+  {
+    fb->depth[i] = 0.0f;
+    fb->brightness[i] = 1.0f;
+  }
+  
+  if (s->vpsOutOfDate)
+  {
+    Matrix_Identity(&s->viewProjectionScreen);
+    Matrix_Multiply(&s->viewProjectionScreen, &s->invView,    &s->viewProjectionScreen);
+    Matrix_Multiply(&s->viewProjectionScreen, &s->projection, &s->viewProjectionScreen);
+    Matrix_Multiply(&s->viewProjectionScreen, &s->screen,     &s->viewProjectionScreen);
+
+    s->vpsOutOfDate = false;
+  }
+
+  // @TODO Draw Cmds Here.
+  
+  u8* pixels = NULL;
+  i32 pixelPitch = 0;
+
+  SDL_LockTexture(fb->texture, NULL, (void*) &pixels, &pixelPitch);
+
+  Colour* palette = $$.Palette.colour;
+
+#define $$RENDER_TYPE 0
+
+  for(u32 i=0, j=0;i < fbSize;i++,j+=4 /* RGBA for some reason */)
+  {
+#if $$RENDER_TYPE == 0
+    u8 index = fb->palette[i];
+    f32 brightness = fb->brightness[i];
+    Colour* colour = &palette[index];
+    pixels[j + 0] = (u8) (colour->r * brightness); // R
+    pixels[j + 1] = (u8) (colour->g * brightness); // G
+    pixels[j + 2] = (u8) (colour->b * brightness); // B
+#elif $$RENDER_TYPE == 1
+    u8 index = (u8) ((1.0f - fb->depth[i]) * 255.0f);
+    pixels[j + 0] = index; // R
+    pixels[j + 1] = index; // G
+    pixels[j + 2] = index; // B
+#elif $$RENDER_TYPE == 2
+    u8 index = (u8) ((fb->brightness[i]) * 255.0f);
+    pixels[j + 0] = index; // R
+    pixels[j + 1] = index; // G
+    pixels[j + 2] = index; // B
+#endif
+  }
+  
+  SDL_UnlockTexture(fb->texture);
+  
+  SDL_Rect dst;
+  dst.x = fb->x;
+  dst.y = fb->y;
+  dst.w = fb->w;
+  dst.h = fb->h;
+
+  SDL_SetRenderTarget($$.Screen.renderer, g->texture);
+  SDL_RenderCopy($$.Screen.renderer, fb->texture, NULL, &dst);
+  SDL_SetRenderTarget($$.Screen.renderer, NULL);
+
+}
+
+void Synthwave_Scene_RenderMesh(Scene* scene, Matrix* worldMatrix, Mesh* mesh)
+{
+  
 }
 
 void Synthwave_Frame()
@@ -357,12 +718,22 @@ int main(int argc, char** argv)
   
   $Setup(&$$.desc);
   
-  $.Palette.Add = Synthwave_Palette_Add;
-  $.Palette.AddRgb = Synthwave_Palette_AddRgb;
-  $.Palette.AddU32 = Synthwave_Palette_AddU32;
-  $.Palette.GetCount = Synthwave_Palette_GetCount;
-  $.Palette.Reset    = Synthwave_Palette_Reset;
-  $.Time.GetTicks = Synthwave_Time_GetTicks;
+  $.Palette.Add         = Synthwave_Palette_Add;
+  $.Palette.AddRgb      = Synthwave_Palette_AddRgb;
+  $.Palette.AddU32      = Synthwave_Palette_AddU32;
+  $.Palette.GetCount    = Synthwave_Palette_GetCount;
+  $.Palette.Reset       = Synthwave_Palette_Reset;
+  $.Time.GetTicks       = Synthwave_Time_GetTicks;
+  $.Mem.Heap            = Synthwave_Mem_Heap;
+  $.Mem.Temp            = Synthwave_Mem_Temp;
+  $.Scene.New           = Synthwave_Scene_New;
+  $.Scene.NewXywh       = Synthwave_Scene_NewXywh;
+  $.Scene.Delete        = Synthwave_Scene_Delete;
+  $.Scene.Submit        = Synthwave_Scene_Submit;
+  $.Scene.SetCamera     = Synthwave_Scene_SetCamera;
+  $.Scene.SetProjection = Synthwave_Scene_SetProjection;
+  $.Scene.RenderMesh    = Synthwave_Scene_RenderMesh;
+
   $$.desc.type = $Clamp($$.desc.type, ST_Windowed, ST_Windowed);
 
   $$.desc.Time.fixedMs = $Max(4, $$.desc.Time.fixedMs);
@@ -391,7 +762,7 @@ int main(int argc, char** argv)
     SDL_Init($$.Screen.flags);
   }
   
-   if ($$.Screen.flags != 0)
+  if ($$.Screen.flags != 0)
   {
 
     if (($$.Screen.flags & SDL_INIT_VIDEO) == 0)
@@ -423,11 +794,16 @@ int main(int argc, char** argv)
       );
 
     }
-    
-    Timer_Reset(&$$.Time.fixedLimiter);
-    Timer_Reset(&$$.Time.frameTimer);
-    Timer_Reset(&$$.Time.fpsTimer);
+  }
 
+  $MaybeFunction($$.desc.Events.OnStart, /**/);
+
+  Timer_Reset(&$$.Time.fixedLimiter);
+  Timer_Reset(&$$.Time.frameTimer);
+  Timer_Reset(&$$.Time.fpsTimer);
+  
+  if ($$.Screen.flags != 0)
+  {
 #if $IsWindows == 1
     while($.quit == false)
     {
@@ -467,8 +843,9 @@ int main(int argc, char** argv)
   return 0;
 }
 
-
+#if $IsWindows == 1
 #include <windows.h>
+#endif
 
 #if $IsWindows == 1
 static BOOL WINAPI Synthwave_Win32_ConsoleHandler(DWORD signal) {

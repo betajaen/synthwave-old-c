@@ -43,6 +43,9 @@ typedef double   f64;
 #define $Squared(X)             ((X) * (X))
 #define $Lerp(X, Y, T)          (X + T * (Y - X))
 
+typedef int Synthwave_TriangleShader_Fn;
+typedef int Synthwave_FragmentShader_Fn;
+
 typedef enum {
   ST_Windowed,
   ST_Console,
@@ -84,6 +87,27 @@ typedef union
 
 typedef struct
 {
+  Vector    v[3];
+  Vector    n;
+  u8        colour;
+  u8        __padding[3];
+} Triangle;
+
+typedef struct
+{
+  Triangle* triangles;
+  u16       numTriangles;
+  u8        triangleShader;
+  u8        fragmentShader;
+} Mesh;
+
+#define $OPAQUE struct { u64 opaque; }
+
+typedef $OPAQUE Scene;
+typedef $OPAQUE Surface;
+
+typedef struct
+{
   bool quit;
   
   struct
@@ -109,6 +133,30 @@ typedef struct
 
     u32 (*GetTicks)();
   } Time;
+
+  struct
+  {
+    void* (*Heap)(void* mem, u32 numBytes);
+    void* (*Temp)(u32 numBytes);
+  } Mem;
+
+  struct
+  {
+    void (*New)(Surface* surface);
+    void (*Delete)(Surface* surface);
+    void (*Render)(Surface* surface);
+  } Surface;
+
+  struct
+  {
+    Scene (*New)();
+    Scene (*NewXywh)(i16 x, i16 y, u16 w, u16 h);
+    void  (*Delete)(Scene* scene);
+    void  (*Submit)(Scene* scene, Surface* surface);
+    void  (*SetCamera)(Scene* scene, Vector* position, Vector* target);
+    void  (*SetProjection)(Scene* scene, f32 fovY, f32 nearPlane, f32 farPlane);
+    void  (*RenderMesh)(Scene* scene, Matrix* worldMatrix, Mesh* mesh);
+  } Scene;
 
 } Synthwave_Interface;
 
@@ -140,6 +188,7 @@ typedef struct
 
 } Synthwave_Description;
 
+extern void $Setup(Synthwave_Description* d);
 
 inline f32 $Deg2Rad(f32 rad) { return ((rad) * 180.0f / $PI); }
 inline f32 $Rad2Deg(f32 deg) { return ((deg) * $PI    / 180.0f); }
@@ -298,6 +347,86 @@ inline bool Timer_IsPaused(Timer* timer)
   return timer->state == 3;
 }
 
-extern void $Setup(Synthwave_Description* d);
+
+typedef struct { u32 size, capacity; } ArrayHeader;
+
+
+#define Array_t(TYPE) TYPE*
+#define Array_Header(A)                ((ArrayHeader*)(A) - 1)
+#define Array_Size(A)                  (Array_Header(A)->size)
+#define Array_Capacity(A)              (Array_Header(A)->capacity)
+
+#define Array_New(A, CAPACITY)\
+    do {\
+      void** AP = (void**)(&(A));\
+      ArrayHeader* AH = (ArrayHeader*) $.Mem.Heap(NULL, sizeof(*(A)) * CAPACITY);\
+      AH->size = 0; AH->capacity = CAPACITY; (*AP) = (void*)(AH + 1);\
+    } while(0)
+
+#define Array_Delete(A)\
+    do { $.Mem.Heap(Array_Header(A), 0); } while(0)
+
+#define Array_SetCapacity(A, NEW_CAPACITY)\
+    do {\
+      void** AP = (void**)&(A);\
+      ArrayHeader* AH = $.Mem.Heap(Array_Header(A), sizeof(*(A)) * NEW_CAPACITY);\
+      AH->capacity = NEW_CAPACITY;\
+      AH->size = Min(AH->size, AH->capacity);\
+      (*AP) = (void*)(AH + 1);\
+    } while(0)
+
+#define Array_Grow(A, MIN_CAPACITY)\
+    do {\
+      u32 _newCapacity = (8 + (Array_Capacity(A) * 2));\
+      if (_newCapacity < MIN_CAPACITY)\
+        _newCapacity = MIN_CAPACITY;\
+      Array_SetCapacity(A, _newCapacity);\
+    } while(0)
+
+#define Array_Clear(A)\
+    do{\
+      Array_Header(A)->size = 0;\
+    } while(0)
+
+#define Array_Push(A, V)\
+    do {\
+      if (Array_Capacity(A) <= (Array_Size(A) + 1))\
+        Array_Grow(A, 0);\
+      (A)[Array_Size(A)] = (ITEM);\
+      Array_Header(A)->size++;\
+    } while(0)
+
+#define Array_Pop(A)\
+    do {\
+      Assert(Array_Size(A) > 0)\
+      Array_Header(A)->size--;\
+    } while(0)
+    
+#define Array_PushAndFillOut(A, OUT_PTR)\
+    do {\
+      if (Array_Capacity(A) <= (Array_Size(A) + 1))\
+        Array_Grow(A, 0);\
+      (OUT_PTR) = &((A)[Array_Size(A)]);\
+      Array_Header(A)->size++;\
+    } while(0)
+
+#define Array_RemoveAt(A, INDEX) \
+    do {\
+      ((A)[INDEX]) = ((A)[Array_Size(A)] - 1);\
+      Array_Header(A)->size--;\
+    } while(0)
+
+#define Array_Shiftdown(A) \
+    do {\
+      u32 length = Array_Size(A);\
+      if (length)\
+      {\
+        for (u32 ii = 0; ii < (length - 1); ii++)\
+        {\
+          A[ii] = A[ii+1];\
+        }\
+        Array_Size(A) = length - 1;\
+      }\
+    } while(0)
 
 #endif
